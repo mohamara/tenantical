@@ -65,6 +65,32 @@ func main() {
 		MaxAge:           300,
 	}))
 
+	// Middleware to handle admin domain root path
+	adminDomain := cfg.Server.AdminDomain
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Only handle root path "/"
+			if r.URL.Path == "/" {
+				host := r.Host
+				if host == "" {
+					host = r.Header.Get("X-Forwarded-Host")
+				}
+				if host == "" {
+					host = r.Header.Get("X-Original-Host")
+				}
+				
+				// If request is from admin domain, redirect to /admin
+				if host == adminDomain {
+					http.Redirect(w, r, "/admin", http.StatusFound)
+					return
+				}
+			}
+			
+			// Continue to next handler
+			next.ServeHTTP(w, r)
+		})
+	})
+
 	// Health check endpoint
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

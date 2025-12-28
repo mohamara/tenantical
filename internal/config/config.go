@@ -19,6 +19,7 @@ type ServerConfig struct {
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
 	IdleTimeout  time.Duration
+	AdminDomain  string // Domain for admin panel access
 }
 
 type DatabaseConfig struct {
@@ -50,6 +51,7 @@ func Load() (*Config, error) {
 			ReadTimeout:  time.Duration(readTimeout) * time.Second,
 			WriteTimeout: time.Duration(writeTimeout) * time.Second,
 			IdleTimeout:  time.Duration(idleTimeout) * time.Second,
+			AdminDomain:  getEnv("ADMIN_DOMAIN", "tenantical.iranservat.com"),
 		},
 		Database: DatabaseConfig{
 			Path: getEnv("DB_PATH", "./tenants.db"),
