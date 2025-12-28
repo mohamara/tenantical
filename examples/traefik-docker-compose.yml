@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  traefik:
+    image: traefik:v2.10
+    container_name: traefik
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./letsencrypt:/letsencrypt
+    command:
+      # API
+      - --api.dashboard=true
+      - --api.insecure=true
+      
+      # Entrypoints
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      
+      # Redirect HTTP to HTTPS
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      
+      # Let's Encrypt
+      - --certificatesresolvers.letsencrypt.acme.email=admin@example.com
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+      
+      # Docker provider
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      
+      # Logging
+      - --log.level=INFO
+      - --accesslog=true
+
+  tenant-router:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: tenant-router
+    restart: unless-stopped
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8080
+      - BACKEND_URL=http://backend:3000
+      - DB_PATH=/data/tenants.db
+    volumes:
+      - ../data:/data
+    labels:
+      # Enable Traefik
+      - "traefik.enable=true"
+      
+      # HTTP Router (redirect to HTTPS)
+      - "traefik.http.routers.tenant-router-http.rule=HostRegexp(`{subdomain:.+}.example.com`) || Host(`example.com`)"
+      - "traefik.http.routers.tenant-router-http.entrypoints=web"
+      - "traefik.http.routers.tenant-router-http.middlewares=redirect-to-https"
+      
+      # HTTPS Router
+      - "traefik.http.routers.tenant-router.rule=HostRegexp(`{subdomain:.+}.example.com`) || Host(`example.com`)"
+      - "traefik.http.routers.tenant-router.entrypoints=websecure"
+      - "traefik.http.routers.tenant-router.tls.certresolver=letsencrypt"
+      
+      # Service
+      - "traefik.http.services.tenant-router.loadbalancer.server.port=8080"
+      
+      # Middleware
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.permanent=true"
+    networks:
+      - tenantical-network
+    depends_on:
+      - traefik
+
+  # Optional: Backend service example
+  # backend:
+  #   image: your-backend:latest
+  #   networks:
+  #     - tenantical-network
+
+networks:
+  tenantical-network:
+    driver: bridge
+

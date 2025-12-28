@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  tenant-router:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tenant-router
+    ports:
+      - "8080:8080"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8080
+      - BACKEND_URL=http://backend:3000
+      - DB_PATH=/data/tenants.db
+      - READ_TIMEOUT=10
+      - WRITE_TIMEOUT=10
+      - IDLE_TIMEOUT=120
+      - PROXY_TIMEOUT=30
+      - PROXY_MAX_IDLE_CONNS=100
+      - PROXY_IDLE_CONN_TIMEOUT=90
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+    networks:
+      - tenantical-network
+
+networks:
+  tenantical-network:
+    driver: bridge
+
