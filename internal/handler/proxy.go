@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -65,7 +66,7 @@ func (h *ProxyHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build backend URL
-	baseURL, err := url.Parse(h.backendURL)
+	baseURL, err := parseBackendURL(h.backendURL)
 	if err != nil {
 		http.Error(w, "Invalid backend URL configuration", http.StatusInternalServerError)
 		return
@@ -152,17 +153,17 @@ func (h *ProxyHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	
 	// Construct path: projectRoute + originalPath
 	backendPath := projectRoute + r.URL.Path
-	if r.URL.RawQuery != "" {
-		backendPath += "?" + r.URL.RawQuery
-	}
 	
 	// Ensure path starts with / for proper URL resolution
 	if !strings.HasPrefix(backendPath, "/") {
 		backendPath = "/" + backendPath
 	}
 
-	// Build the full URL by combining base URL with path
-	backendReqURL := backendURL.ResolveReference(&url.URL{Path: backendPath})
+	// Build the full URL by combining base URL with path and query
+	backendReqURL := backendURL.ResolveReference(&url.URL{
+		Path:     backendPath,
+		RawQuery: r.URL.RawQuery,
+	})
 
 	// Create request to backend
 	backendReq, err := http.NewRequestWithContext(r.Context(), r.Method, backendReqURL.String(), r.Body)
@@ -233,3 +234,24 @@ func (h *ProxyHandler) RegisterRoutes(r chi.Router) {
 	r.HandleFunc("/*", h.Handle)
 }
 
+func parseBackendURL(rawURL string) (*url.URL, error) {
+	baseURL, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, err
+	}
+
+	if baseURL.Host != "" {
+		return baseURL, nil
+	}
+
+	baseURL, err = url.Parse("http://" + rawURL)
+	if err != nil {
+		return nil, err
+	}
+
+	if baseURL.Host == "" {
+		return nil, fmt.Errorf("backend URL is missing host")
+	}
+
+	return baseURL, nil
+}
