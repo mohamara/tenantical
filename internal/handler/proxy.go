@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -65,7 +66,7 @@ func (h *ProxyHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build backend URL
-	baseURL, err := url.Parse(h.backendURL)
+	baseURL, err := parseBackendURL(h.backendURL)
 	if err != nil {
 		http.Error(w, "Invalid backend URL configuration", http.StatusInternalServerError)
 		return
@@ -231,4 +232,26 @@ func (h *ProxyHandler) Handle(w http.ResponseWriter, r *http.Request) {
 
 func (h *ProxyHandler) RegisterRoutes(r chi.Router) {
 	r.HandleFunc("/*", h.Handle)
+}
+
+func parseBackendURL(rawURL string) (*url.URL, error) {
+	baseURL, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, err
+	}
+
+	if baseURL.Host != "" {
+		return baseURL, nil
+	}
+
+	baseURL, err = url.Parse("http://" + rawURL)
+	if err != nil {
+		return nil, err
+	}
+
+	if baseURL.Host == "" {
+		return nil, fmt.Errorf("backend URL is missing host")
+	}
+
+	return baseURL, nil
 }
