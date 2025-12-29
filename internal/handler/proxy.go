@@ -74,6 +74,10 @@ func (h *ProxyHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	if tenantInfo.BackendDomain != nil && *tenantInfo.BackendDomain != "" {
 		// Use tenant-specific backend domain
 		hostname := *tenantInfo.BackendDomain
+		// Convert localhost domains to 127.0.0.1 to avoid IPv6 resolution issues
+		if hostname == "localhost" || strings.HasSuffix(hostname, ".localhost") {
+			hostname = "127.0.0.1"
+		}
 		port := backendURL.Port()
 		if tenantInfo.ProjectPort != nil {
 			port = strconv.Itoa(*tenantInfo.ProjectPort)
