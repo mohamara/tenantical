@@ -152,17 +152,17 @@ func (h *ProxyHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	
 	// Construct path: projectRoute + originalPath
 	backendPath := projectRoute + r.URL.Path
-	if r.URL.RawQuery != "" {
-		backendPath += "?" + r.URL.RawQuery
-	}
 	
 	// Ensure path starts with / for proper URL resolution
 	if !strings.HasPrefix(backendPath, "/") {
 		backendPath = "/" + backendPath
 	}
 
-	// Build the full URL by combining base URL with path
-	backendReqURL := backendURL.ResolveReference(&url.URL{Path: backendPath})
+	// Build the full URL by combining base URL with path and query
+	backendReqURL := backendURL.ResolveReference(&url.URL{
+		Path:     backendPath,
+		RawQuery: r.URL.RawQuery,
+	})
 
 	// Create request to backend
 	backendReq, err := http.NewRequestWithContext(r.Context(), r.Method, backendReqURL.String(), r.Body)
@@ -232,4 +232,3 @@ func (h *ProxyHandler) Handle(w http.ResponseWriter, r *http.Request) {
 func (h *ProxyHandler) RegisterRoutes(r chi.Router) {
 	r.HandleFunc("/*", h.Handle)
 }
-

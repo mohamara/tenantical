@@ -99,7 +99,7 @@ curl -X POST http://localhost:8080/admin/tenants \
 curl -X POST http://localhost:8080/admin/tenants \
   -H "Content-Type: application/json" \
   -d '{
-    "domain": "api.localhost:85",
+    "domain": "api.localhost",
     "tenant_id": "tenant-123",
     "project_route": "/projects/backend",
     "project_port": 85
@@ -267,7 +267,7 @@ Content-Type: application/json
 **با project_port (برای پروژه‌های روی پورت‌های مختلف):**
 ```json
 {
-  "domain": "api.localhost:85",
+  "domain": "api.localhost",
   "tenant_id": "tenant-123",
   "project_route": "/projects/backend",
   "project_port": 85
@@ -355,4 +355,3 @@ MIT
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
-
