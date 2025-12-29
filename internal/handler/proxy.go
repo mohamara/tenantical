@@ -186,9 +186,9 @@ func (h *ProxyHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Inject tenant ID header
-	backendReq.Header.Set("X-Tenant-ID", tenantInfo.TenantID)
-	
+	// Request goes to backend without any tenant identification headers
+	// Tenant identification is done via domain-based routing only
+
 	// Set proper Host header for backend
 	// If backend domain was specified, preserve the original domain in Host header for proper routing
 	// This is important for nginx virtual hosts that route based on Host header
