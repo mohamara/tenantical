@@ -236,6 +236,11 @@ func (h *AdminUIHandler) ServeAdminPanel(w http.ResponseWriter, r *http.Request)
                     <label for="project_route">مسیر پروژه (Project Route):</label>
                     <input type="text" id="project_route" name="project_route" placeholder="مثال: /projects/backend (اختیاری)" value="/projects/backend">
                 </div>
+                <div class="form-group">
+                    <label for="project_port">پورت پروژه (Project Port):</label>
+                    <input type="number" id="project_port" name="project_port" placeholder="مثال: 85 (اختیاری - برای پروژه‌های روی پورت‌های مختلف)" min="1" max="65535">
+                    <small style="display: block; margin-top: 5px; color: #666; font-size: 0.9rem;">اگر خالی بماند، از پورت پیش‌فرض در BACKEND_URL استفاده می‌شود</small>
+                </div>
                 <button type="submit" class="btn btn-primary" id="submitBtn">افزودن Tenant</button>
             </form>
         </div>
@@ -283,13 +288,15 @@ func (h *AdminUIHandler) ServeAdminPanel(w http.ResponseWriter, r *http.Request)
                     return;
                 }
                 
-                let tableHTML = '<table class="tenants-table"><thead><tr><th>دامنه</th><th>Tenant ID</th><th>مسیر پروژه</th><th>تاریخ ایجاد</th><th>عملیات</th></tr></thead><tbody>';
+                let tableHTML = '<table class="tenants-table"><thead><tr><th>دامنه</th><th>Tenant ID</th><th>مسیر پروژه</th><th>پورت پروژه</th><th>تاریخ ایجاد</th><th>عملیات</th></tr></thead><tbody>';
                 
                 tenants.forEach(tenant => {
+                    const projectPort = tenant.project_port ? escapeHtml(tenant.project_port.toString()) : '<span style="color: #999;">-</span>';
                     tableHTML += '<tr>' +
                         '<td><strong>' + escapeHtml(tenant.domain) + '</strong></td>' +
                         '<td><code>' + escapeHtml(tenant.tenant_id) + '</code></td>' +
                         '<td><code>' + escapeHtml(tenant.project_route || '/projects/backend') + '</code></td>' +
+                        '<td>' + projectPort + '</td>' +
                         '<td>' + escapeHtml(tenant.created_at || '-') + '</td>' +
                         '<td><button class="btn btn-danger" onclick="deleteTenant(\'' + escapeHtml(tenant.domain) + '\')">حذف</button></td>' +
                         '</tr>';
@@ -308,11 +315,23 @@ func (h *AdminUIHandler) ServeAdminPanel(w http.ResponseWriter, r *http.Request)
             e.preventDefault();
             
             const submitBtn = document.getElementById('submitBtn');
+            const projectPortValue = document.getElementById('project_port').value.trim();
             const formData = {
                 domain: document.getElementById('domain').value.trim(),
                 tenant_id: document.getElementById('tenant_id').value.trim(),
                 project_route: document.getElementById('project_route').value.trim() || '/projects/backend'
             };
+            
+            // اضافه کردن project_port فقط اگر مقدار داشته باشد
+            if (projectPortValue) {
+                const port = parseInt(projectPortValue);
+                if (!isNaN(port) && port > 0 && port <= 65535) {
+                    formData.project_port = port;
+                } else {
+                    showAlert('پورت باید عددی بین 1 تا 65535 باشد', 'error');
+                    return;
+                }
+            }
             
             if (!formData.domain || !formData.tenant_id) {
                 showAlert('لطفاً فیلدهای اجباری را پر کنید', 'error');
@@ -340,6 +359,7 @@ func (h *AdminUIHandler) ServeAdminPanel(w http.ResponseWriter, r *http.Request)
                 showAlert('Tenant با موفقیت افزوده شد', 'success');
                 document.getElementById('tenantForm').reset();
                 document.getElementById('project_route').value = '/projects/backend';
+                document.getElementById('project_port').value = '';
                 await loadTenants();
             } catch (error) {
                 showAlert('خطا: ' + error.message, 'error');

@@ -27,15 +27,15 @@ BACKEND_URL=http://api.example.com PORT=8080 ./bin/tenant-router
 ### 2. اضافه کردن Tenant ها
 
 ```bash
-# Tenant 1
+# Tenant 1 (با project_route)
 curl -X POST http://localhost:8080/admin/tenants \
   -H "Content-Type: application/json" \
-  -d '{"domain": "tenant1.example.com", "tenant_id": "tenant-123"}'
+  -d '{"domain": "tenant1.example.com", "tenant_id": "tenant-123", "project_route": "/projects/backend"}'
 
-# Tenant 2
+# Tenant 2 (با project_port برای پروژه روی پورت 85)
 curl -X POST http://localhost:8080/admin/tenants \
   -H "Content-Type: application/json" \
-  -d '{"domain": "tenant2.example.com", "tenant_id": "tenant-456"}'
+  -d '{"domain": "api.localhost:85", "tenant_id": "tenant-456", "project_route": "/projects/backend", "project_port": 85}'
 
 # Wildcard domain
 curl -X POST http://localhost:8080/admin/tenants \

@@ -6,7 +6,8 @@
 
 - ✅ **Domain-based Routing**: تشخیص tenant بر اساس دامنه درخواست
 - ✅ **Project Routing**: Forward کردن درخواست به project/service route مناسب
-- ✅ **SQLite Storage**: ذخیره‌سازی mapping دامنه به tenant ID + project route
+- ✅ **Custom Port Support**: پشتیبانی از پورت‌های مختلف برای هر tenant
+- ✅ **SQLite Storage**: ذخیره‌سازی mapping دامنه به tenant ID + project route + project port
 - ✅ **Header Injection**: افزودن خودکار `X-Tenant-ID` به درخواست‌های backend
 - ✅ **Wildcard Support**: پشتیبانی از wildcard domains (مثل `*.example.com`)
 - ✅ **In-memory Cache**: کش کردن نتایج برای performance بهتر
@@ -91,6 +92,20 @@ curl -X POST http://localhost:8080/admin/tenants \
 
 **project_route** (اختیاری، پیش‌فرض: `/projects/backend`): مسیر پروژه در reverse proxy که درخواست به آن forward می‌شود.
 
+**project_port** (اختیاری): پورت اختصاصی برای پروژه. اگر مشخص نشود، از پورت پیش‌فرض در `BACKEND_URL` استفاده می‌شود.
+
+**مثال با پورت اختصاصی:**
+```bash
+curl -X POST http://localhost:8080/admin/tenants \
+  -H "Content-Type: application/json" \
+  -d '{
+    "domain": "api.localhost:85",
+    "tenant_id": "tenant-123",
+    "project_route": "/projects/backend",
+    "project_port": 85
+  }'
+```
+
 ### 2. اضافه کردن Wildcard Domain
 
 ```bash
@@ -144,6 +159,8 @@ curl -H "Host: tenant1.example.com" http://localhost:8080/api/users
 │  │  → tenant_id: tenant-123  │  │
 │  │  → project_route:         │  │
 │  │    /projects/backend      │  │
+│  │  → project_port: 85       │  │
+│  │    (optional)              │  │
 │  └───────────────────────────┘  │
 │  ┌───────────────────────────┐  │
 │  │  Header Injection         │  │
@@ -153,11 +170,14 @@ curl -H "Host: tenant1.example.com" http://localhost:8080/api/users
 │  │  Route Construction       │  │
 │  │  /projects/backend/       │  │
 │  │    + /api/users           │  │
+│  │  URL: http://localhost:85 │  │
+│  │    (if project_port set)  │  │
 │  └───────────────────────────┘  │
 └──────────────┬──────────────────┘
                │
                │ Forwarded Request
-               │ URL: {BACKEND_URL}/projects/backend/api/users
+               │ URL: http://localhost:85/projects/backend/api/users
+               │      (or {BACKEND_URL} if no project_port)
                │ Header: X-Tenant-ID: tenant-123
                ▼
 ┌─────────────────────────────────┐
@@ -225,7 +245,8 @@ Content-Type: application/json
 {
   "domain": "tenant1.example.com",
   "tenant_id": "tenant-123",
-  "project_route": "/projects/backend"
+  "project_route": "/projects/backend",
+  "project_port": 85
 }
 ```
 
@@ -233,12 +254,26 @@ Content-Type: application/json
 - `domain` (required): Domain یا subdomain tenant
 - `tenant_id` (required): شناسه یکتا tenant
 - `project_route` (optional): مسیر پروژه در reverse proxy (default: `/projects/backend`)
+- `project_port` (optional): پورت اختصاصی برای پروژه (default: استفاده از پورت در `BACKEND_URL`)
 
 **Examples:**
+
+**با project_route:**
 - `/projects/backend` → برای backend API
 - `/projects/frontend` → برای frontend application
 - `/projects/admin` → برای admin panel
 - `/projects/api` → برای API service
+
+**با project_port (برای پروژه‌های روی پورت‌های مختلف):**
+```json
+{
+  "domain": "api.localhost:85",
+  "tenant_id": "tenant-123",
+  "project_route": "/projects/backend",
+  "project_port": 85
+}
+```
+درخواست به `http://localhost:85/projects/backend/...` forward می‌شود.
 
 #### List Tenants
 ```http

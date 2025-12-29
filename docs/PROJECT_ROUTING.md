@@ -13,9 +13,12 @@ Tenant Router:
     ├─ Domain Lookup: tenant1.example.com
     ├─ Database Query:
     │   ├─ tenant_id: "tenant-123"
-    │   └─ project_route: "/projects/backend"
+    │   ├─ project_route: "/projects/backend"
+    │   └─ project_port: 85 (optional)
     ├─ Header Injection: X-Tenant-ID: tenant-123
-    └─ URL Construction: {BACKEND_URL}/projects/backend/api/users
+    └─ URL Construction: 
+        ├─ If project_port set: http://localhost:85/projects/backend/api/users
+        └─ Otherwise: {BACKEND_URL}/projects/backend/api/users
     ↓
 Reverse Proxy (nginx/traefik):
     ├─ Route: /projects/backend → backend service
@@ -32,9 +35,16 @@ CREATE TABLE tenants (
     domain TEXT PRIMARY KEY,
     tenant_id TEXT NOT NULL,
     project_route TEXT NOT NULL DEFAULT '/projects/backend',
+    project_port INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 ```
+
+**Fields:**
+- `domain`: Domain یا subdomain tenant
+- `tenant_id`: شناسه یکتا tenant
+- `project_route`: مسیر پروژه در reverse proxy (default: `/projects/backend`)
+- `project_port`: پورت اختصاصی برای پروژه (nullable، اگر null باشد از پورت در `BACKEND_URL` استفاده می‌شود)
 
 ## Project Route Examples
 
@@ -78,6 +88,25 @@ CREATE TABLE tenants (
 ```
 **Result:** Request به `{BACKEND_URL}/custom/path/{path}` forward می‌شود
 
+### Project with Custom Port
+```json
+{
+  "domain": "api.localhost:85",
+  "tenant_id": "tenant-123",
+  "project_route": "/projects/backend",
+  "project_port": 85
+}
+```
+**Result:** Request به `http://localhost:85/projects/backend/{path}` forward می‌شود
+
+**Use Case:** وقتی پروژه روی پورت‌های مختلف اجرا می‌شود (مثلاً nginx روی پورت 85):
+- `http://localhost:85` - Frontend App
+- `http://api.localhost:85` - Backend API
+- `http://admin.localhost:85` - Admin Panel
+- `http://tenant.localhost:85` - Tenant Manager
+
+هر کدام می‌توانند `project_port: 85` داشته باشند.
+
 ## API Usage
 
 ### Add Tenant with Project Route
@@ -92,6 +121,19 @@ curl -X POST http://localhost:8080/admin/tenants \
   }'
 ```
 
+### Add Tenant with Custom Port
+
+```bash
+curl -X POST http://localhost:8080/admin/tenants \
+  -H "Content-Type: application/json" \
+  -d '{
+    "domain": "api.localhost:85",
+    "tenant_id": "tenant-123",
+    "project_route": "/projects/backend",
+    "project_port": 85
+  }'
+```
+
 ### Add Tenant without Project Route (uses default)
 
 ```bash
@@ -102,7 +144,9 @@ curl -X POST http://localhost:8080/admin/tenants \
     "tenant_id": "tenant-456"
   }'
 ```
-**Note:** اگر `project_route` مشخص نشود، پیش‌فرض `/projects/backend` استفاده می‌شود.
+**Note:** 
+- اگر `project_route` مشخص نشود، پیش‌فرض `/projects/backend` استفاده می‌شود.
+- اگر `project_port` مشخص نشود، از پورت در `BACKEND_URL` استفاده می‌شود.
 
 ## Reverse Proxy Configuration
 
@@ -233,12 +277,30 @@ services:
 
 ## Migration
 
-اگر از نسخه قدیمی استفاده می‌کنید که project_route نداشت:
+اگر از نسخه قدیمی استفاده می‌کنید:
 
-1. Database migration به صورت خودکار انجام می‌شود (default: `/projects/backend`)
-2. می‌توانید بعداً project_route را برای هر tenant به‌روزرسانی کنید:
+1. **project_route migration**: به صورت خودکار انجام می‌شود (default: `/projects/backend`)
+2. **project_port migration**: به صورت خودکار انجام می‌شود (nullable، default: null)
+
+می‌توانید بعداً project_route و project_port را برای هر tenant به‌روزرسانی کنید:
 
 ```sql
+-- Update project_route
 UPDATE tenants SET project_route = '/projects/frontend' WHERE domain = 'frontend.example.com';
+
+-- Update project_port
+UPDATE tenants SET project_port = 85 WHERE domain = 'api.localhost:85';
+```
+
+یا از Admin API:
+```bash
+curl -X POST http://localhost:8080/admin/tenants \
+  -H "Content-Type: application/json" \
+  -d '{
+    "domain": "api.localhost:85",
+    "tenant_id": "tenant-123",
+    "project_route": "/projects/backend",
+    "project_port": 85
+  }'
 ```
 
