@@ -51,18 +51,51 @@ curl -X POST "$BASE_URL/admin/tenants" \
   }'
 echo -e "\n"
 
-# Example 5: List all tenants
-echo "📋 Example 5: List all tenants"
+# Example 5: Add tenant with custom port (for projects on different ports)
+echo "📝 Example 5: Add tenant with custom project port"
+curl -X POST "$BASE_URL/admin/tenants" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "domain": "localhost:85",
+    "tenant_id": "tenant-005",
+    "project_route": "/projects/backend",
+    "project_port": 85
+  }'
+echo -e "\n"
+
+# Example 6: Add tenant with subdomain and custom port
+echo "📝 Example 6: Add tenant for API on port 85"
+curl -X POST "$BASE_URL/admin/tenants" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "domain": "api.localhost:85",
+    "tenant_id": "tenant-006",
+    "project_route": "/projects/backend",
+    "project_port": 85
+  }'
+echo -e "\n"
+
+# Example 7: List all tenants
+echo "📋 Example 7: List all tenants"
 curl "$BASE_URL/admin/tenants" | jq '.'
 echo -e "\n"
 
-# Example 6: Test proxy routing
-echo "🔀 Example 6: Test proxy routing"
+# Example 8: Test proxy routing
+echo "🔀 Example 8: Test proxy routing"
 echo "Request: GET api1.example.com/api/users"
 echo "Will be forwarded to: {BACKEND_URL}/projects/backend/api/users"
 echo "With header: X-Tenant-ID: tenant-001"
 echo ""
 curl -v -H "Host: api1.example.com" "$BASE_URL/api/users" 2>&1 | grep -E "(Host|X-Tenant-ID|HTTP|Location)"
+echo -e "\n"
+
+# Example 9: Test proxy routing with custom port
+echo "🔀 Example 9: Test proxy routing with custom port (port 85)"
+echo "Request: GET api.localhost:85/api/users"
+echo "Will be forwarded to: http://localhost:85/projects/backend/api/users"
+echo "With header: X-Tenant-ID: tenant-006"
+echo ""
+curl -v -H "Host: api.localhost:85" "$BASE_URL/api/users" 2>&1 | grep -E "(Host|X-Tenant-ID|HTTP|Location)"
 echo -e "\n"
 
 echo "✅ Examples completed!"

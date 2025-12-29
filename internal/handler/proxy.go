@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -67,6 +68,12 @@ func (h *ProxyHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "Invalid backend URL configuration", http.StatusInternalServerError)
 		return
+	}
+
+	// Override port if tenant has a specific project port
+	if tenantInfo.ProjectPort != nil {
+		// Reconstruct URL with tenant-specific port
+		backendURL.Host = backendURL.Hostname() + ":" + strconv.Itoa(*tenantInfo.ProjectPort)
 	}
 
 	// Construct full backend path with project route

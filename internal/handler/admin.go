@@ -23,6 +23,7 @@ func (h *AdminHandler) AddTenant(w http.ResponseWriter, r *http.Request) {
 		Domain      string `json:"domain"`
 		TenantID    string `json:"tenant_id"`
 		ProjectRoute string `json:"project_route"` // Optional, defaults to /projects/backend
+		ProjectPort  *int  `json:"project_port,omitempty"` // Optional port for project
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -35,18 +36,23 @@ func (h *AdminHandler) AddTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.tenantManager.AddTenant(req.Domain, req.TenantID, req.ProjectRoute); err != nil {
+	if err := h.tenantManager.AddTenant(req.Domain, req.TenantID, req.ProjectRoute, req.ProjectPort); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	response := map[string]interface{}{
 		"message":      "Tenant added successfully",
 		"domain":       req.Domain,
 		"tenant_id":    req.TenantID,
 		"project_route": req.ProjectRoute,
-	})
+	}
+	if req.ProjectPort != nil {
+		response["project_port"] = *req.ProjectPort
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
 
 func (h *AdminHandler) DeleteTenant(w http.ResponseWriter, r *http.Request) {

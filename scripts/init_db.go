@@ -31,7 +31,7 @@ func main() {
 	log.Printf("Initializing database at %s", *dbPath)
 
 	for _, tenant := range tenants {
-		if err := tm.AddTenant(tenant.domain, tenant.tenantID); err != nil {
+		if err := tm.AddTenant(tenant.domain, tenant.tenantID, "", nil); err != nil {
 			log.Printf("Failed to add tenant %s: %v", tenant.domain, err)
 			os.Exit(1)
 		}

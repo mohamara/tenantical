@@ -13,6 +13,7 @@ import (
 type TenantInfo struct {
 	TenantID    string
 	ProjectRoute string
+	ProjectPort  *int // Optional port, nil means use default from config
 }
 
 type TenantManager struct {
@@ -49,6 +50,7 @@ func (tm *TenantManager) initDB() error {
 		domain TEXT PRIMARY KEY,
 		tenant_id TEXT NOT NULL,
 		project_route TEXT NOT NULL DEFAULT '/projects/backend',
+		project_port INTEGER,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 
@@ -59,6 +61,9 @@ func (tm *TenantManager) initDB() error {
 	
 	// Migration: Add project_route column if it doesn't exist (for existing databases)
 	_, _ = tm.db.Exec("ALTER TABLE tenants ADD COLUMN project_route TEXT DEFAULT '/projects/backend'")
+	
+	// Migration: Add project_port column if it doesn't exist (for existing databases)
+	_, _ = tm.db.Exec("ALTER TABLE tenants ADD COLUMN project_port INTEGER")
 	
 	return err
 }
@@ -115,19 +120,28 @@ func (tm *TenantManager) GetTenantID(host string) (string, error) {
 func (tm *TenantManager) resolveTenantInfo(host string) (*TenantInfo, error) {
 	// Direct match
 	var tenantID, projectRoute string
+	var projectPort sql.NullInt64
 	err := tm.db.QueryRow(
-		"SELECT tenant_id, project_route FROM tenants WHERE domain = ?",
+		"SELECT tenant_id, project_route, project_port FROM tenants WHERE domain = ?",
 		host,
-	).Scan(&tenantID, &projectRoute)
+	).Scan(&tenantID, &projectRoute, &projectPort)
 
 	if err == nil {
 		// Set default if empty
 		if projectRoute == "" {
 			projectRoute = "/projects/backend"
 		}
+		
+		var port *int
+		if projectPort.Valid {
+			p := int(projectPort.Int64)
+			port = &p
+		}
+		
 		return &TenantInfo{
 			TenantID:    tenantID,
 			ProjectRoute: projectRoute,
+			ProjectPort:  port,
 		}, nil
 	}
 
@@ -136,7 +150,7 @@ func (tm *TenantManager) resolveTenantInfo(host string) (*TenantInfo, error) {
 	}
 
 	// Wildcard match (e.g., *.example.com)
-	rows, err := tm.db.Query("SELECT domain, tenant_id, project_route FROM tenants WHERE domain LIKE '%*%'")
+	rows, err := tm.db.Query("SELECT domain, tenant_id, project_route, project_port FROM tenants WHERE domain LIKE '%*%'")
 	if err != nil {
 		return nil, fmt.Errorf("wildcard query error: %w", err)
 	}
@@ -144,7 +158,8 @@ func (tm *TenantManager) resolveTenantInfo(host string) (*TenantInfo, error) {
 
 	for rows.Next() {
 		var domain, tid, route string
-		if err := rows.Scan(&domain, &tid, &route); err != nil {
+		var projectPort sql.NullInt64
+		if err := rows.Scan(&domain, &tid, &route, &projectPort); err != nil {
 			continue
 		}
 
@@ -153,9 +168,17 @@ func (tm *TenantManager) resolveTenantInfo(host string) (*TenantInfo, error) {
 			if route == "" {
 				route = "/projects/backend"
 			}
+			
+			var port *int
+			if projectPort.Valid {
+				p := int(projectPort.Int64)
+				port = &p
+			}
+			
 			return &TenantInfo{
 				TenantID:    tid,
 				ProjectRoute: route,
+				ProjectPort:  port,
 			}, nil
 		}
 	}
@@ -190,7 +213,7 @@ func (tm *TenantManager) matchWildcard(host, pattern string) bool {
 	return strings.HasPrefix(host, parts[0]) && strings.HasSuffix(host, parts[1])
 }
 
-func (tm *TenantManager) AddTenant(domain, tenantID, projectRoute string) error {
+func (tm *TenantManager) AddTenant(domain, tenantID, projectRoute string, projectPort *int) error {
 	domain = strings.ToLower(domain)
 	
 	// Set default if empty
@@ -198,9 +221,16 @@ func (tm *TenantManager) AddTenant(domain, tenantID, projectRoute string) error 
 		projectRoute = "/projects/backend"
 	}
 	
+	var portValue interface{}
+	if projectPort != nil {
+		portValue = *projectPort
+	} else {
+		portValue = nil
+	}
+	
 	_, err := tm.db.Exec(
-		"INSERT OR REPLACE INTO tenants (domain, tenant_id, project_route) VALUES (?, ?, ?)",
-		domain, tenantID, projectRoute,
+		"INSERT OR REPLACE INTO tenants (domain, tenant_id, project_route, project_port) VALUES (?, ?, ?, ?)",
+		domain, tenantID, projectRoute, portValue,
 	)
 	
 	if err != nil {
@@ -237,7 +267,7 @@ func (tm *TenantManager) DeleteTenant(domain string) error {
 }
 
 func (tm *TenantManager) ListTenants() ([]map[string]interface{}, error) {
-	rows, err := tm.db.Query("SELECT domain, tenant_id, project_route, created_at FROM tenants ORDER BY domain")
+	rows, err := tm.db.Query("SELECT domain, tenant_id, project_route, project_port, created_at FROM tenants ORDER BY domain")
 	if err != nil {
 		return nil, fmt.Errorf("failed to list tenants: %w", err)
 	}
@@ -246,9 +276,10 @@ func (tm *TenantManager) ListTenants() ([]map[string]interface{}, error) {
 	var tenants []map[string]interface{}
 	for rows.Next() {
 		var domain, tenantID, projectRoute string
+		var projectPort sql.NullInt64
 		var createdAt string
 		
-		if err := rows.Scan(&domain, &tenantID, &projectRoute, &createdAt); err != nil {
+		if err := rows.Scan(&domain, &tenantID, &projectRoute, &projectPort, &createdAt); err != nil {
 			continue
 		}
 
@@ -256,12 +287,18 @@ func (tm *TenantManager) ListTenants() ([]map[string]interface{}, error) {
 			projectRoute = "/projects/backend"
 		}
 
-		tenants = append(tenants, map[string]interface{}{
+		tenant := map[string]interface{}{
 			"domain":       domain,
 			"tenant_id":    tenantID,
 			"project_route": projectRoute,
 			"created_at":   createdAt,
-		})
+		}
+		
+		if projectPort.Valid {
+			tenant["project_port"] = projectPort.Int64
+		}
+
+		tenants = append(tenants, tenant)
 	}
 
 	return tenants, nil
