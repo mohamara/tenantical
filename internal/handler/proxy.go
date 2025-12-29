@@ -191,20 +191,13 @@ func (h *ProxyHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	// Set proper Host header for backend
 	// If backend domain was specified, preserve the original domain in Host header for proper routing
 	// This is important for nginx virtual hosts that route based on Host header
+	// Note: Most web servers (nginx, Apache) don't need port in Host header when using standard ports
 	if tenantInfo.BackendDomain != nil && *tenantInfo.BackendDomain != "" {
 		// Use the original backend domain (e.g., admin.localhost) in Host header
 		// But connect to host.docker.internal:85 for the actual connection
+		// Don't include port in Host header - nginx routes based on domain name only
 		originalDomain := *tenantInfo.BackendDomain
-		// Determine port for Host header (use project port if set, otherwise from base URL)
-		port := baseURL.Port()
-		if tenantInfo.ProjectPort != nil {
-			port = strconv.Itoa(*tenantInfo.ProjectPort)
-		}
-		if port != "" {
-			backendReq.Host = originalDomain + ":" + port
-		} else {
-			backendReq.Host = originalDomain
-		}
+		backendReq.Host = originalDomain
 	} else {
 		backendReq.Host = backendURL.Host
 	}
