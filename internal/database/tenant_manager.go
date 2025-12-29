@@ -235,7 +235,7 @@ func (tm *TenantManager) matchWildcard(host, pattern string) bool {
 }
 
 func (tm *TenantManager) AddTenant(domain, tenantID, projectRoute string, projectPort *int, backendDomain *string) error {
-	domain = strings.ToLower(domain)
+	domain = normalizeDomain(domain)
 	
 	// Set default if empty
 	if projectRoute == "" {
@@ -266,17 +266,13 @@ func (tm *TenantManager) AddTenant(domain, tenantID, projectRoute string, projec
 	}
 
 	// Invalidate cache
-	if tm.cacheEnabled {
-		tm.cacheMutex.Lock()
-		delete(tm.cache, domain)
-		tm.cacheMutex.Unlock()
-	}
+	tm.invalidateCache(domain)
 
 	return nil
 }
 
 func (tm *TenantManager) DeleteTenant(domain string) error {
-	domain = strings.ToLower(domain)
+	domain = normalizeDomain(domain)
 	
 	_, err := tm.db.Exec("DELETE FROM tenants WHERE domain = ?", domain)
 	
@@ -285,11 +281,7 @@ func (tm *TenantManager) DeleteTenant(domain string) error {
 	}
 
 	// Invalidate cache
-	if tm.cacheEnabled {
-		tm.cacheMutex.Lock()
-		delete(tm.cache, domain)
-		tm.cacheMutex.Unlock()
-	}
+	tm.invalidateCache(domain)
 
 	return nil
 }
@@ -345,3 +337,23 @@ func (tm *TenantManager) ClearCache() {
 	}
 }
 
+func (tm *TenantManager) invalidateCache(domain string) {
+	if !tm.cacheEnabled {
+		return
+	}
+
+	if strings.Contains(domain, "*") {
+		tm.ClearCache()
+		return
+	}
+
+	tm.cacheMutex.Lock()
+	delete(tm.cache, domain)
+	tm.cacheMutex.Unlock()
+}
+
+func normalizeDomain(domain string) string {
+	domain = strings.ToLower(domain)
+	parts := strings.Split(domain, ":")
+	return parts[0]
+}
