@@ -3,6 +3,7 @@ package handler
 import (
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -44,6 +45,8 @@ func NewProxyHandler(tm *database.TenantManager, backendURL string, timeout time
 }
 
 func (h *ProxyHandler) Handle(w http.ResponseWriter, r *http.Request) {
+	log.Printf("[PROXY] Processing request: %s %s", r.Method, r.URL.Path)
+
 	// Extract host from request
 	host := r.Host
 	if host == "" {
@@ -53,7 +56,10 @@ func (h *ProxyHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		host = r.Header.Get("X-Original-Host")
 	}
 
+	log.Printf("[PROXY] Host identified: %s", host)
+
 	if host == "" {
+		log.Printf("[PROXY] ERROR: Missing Host header")
 		http.Error(w, "Missing Host header", http.StatusBadRequest)
 		return
 	}
@@ -61,16 +67,24 @@ func (h *ProxyHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	// Resolve tenant info (ID + project route)
 	tenantInfo, err := h.tenantManager.GetTenantInfo(host)
 	if err != nil {
+		log.Printf("[PROXY] ERROR: Tenant not found for domain: %s (error: %v)", host, err)
 		http.Error(w, "Invalid tenant domain", http.StatusNotFound)
 		return
 	}
 
+	log.Printf("[PROXY] Tenant found - ID: %s, Route: %s, Port: %v, BackendDomain: %v",
+		tenantInfo.TenantID, tenantInfo.ProjectRoute,
+		tenantInfo.ProjectPort, tenantInfo.BackendDomain)
+
 	// Build backend URL
 	baseURL, err := parseBackendURL(h.backendURL)
 	if err != nil {
+		log.Printf("[PROXY] ERROR: Invalid backend URL configuration: %s", h.backendURL)
 		http.Error(w, "Invalid backend URL configuration", http.StatusInternalServerError)
 		return
 	}
+
+	log.Printf("[PROXY] Backend URL parsed: %s", baseURL.String())
 
 	// Determine scheme (default to http)
 	scheme := baseURL.Scheme
@@ -165,9 +179,12 @@ func (h *ProxyHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		RawQuery: r.URL.RawQuery,
 	})
 
+	log.Printf("[PROXY] Final backend URL: %s", backendReqURL.String())
+
 	// Create request to backend
 	backendReq, err := http.NewRequestWithContext(r.Context(), r.Method, backendReqURL.String(), r.Body)
 	if err != nil {
+		log.Printf("[PROXY] ERROR: Failed to create backend request: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -204,12 +221,16 @@ func (h *ProxyHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Forward request
+	log.Printf("[PROXY] Forwarding request to backend: %s %s", backendReq.Method, backendReq.URL.String())
 	resp, err := h.client.Do(backendReq)
 	if err != nil {
+		log.Printf("[PROXY] ERROR: Backend request failed: %v", err)
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()
+
+	log.Printf("[PROXY] Backend response: %d %s", resp.StatusCode, resp.Status)
 
 	// Copy response headers (must be done before WriteHeader)
 	for key, values := range resp.Header {
@@ -224,10 +245,13 @@ func (h *ProxyHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	// Copy response body
 	_, err = io.Copy(w, resp.Body)
 	if err != nil {
+		log.Printf("[PROXY] ERROR: Failed to copy response body: %v", err)
 		// Response already started, can't change status
 		// Log error in production
 		return
 	}
+
+	log.Printf("[PROXY] Request completed successfully - forwarded %s %s to backend", r.Method, r.URL.Path)
 }
 
 func (h *ProxyHandler) RegisterRoutes(r chi.Router) {
