@@ -120,8 +120,13 @@ func (h *ProxyHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		projectRoute = "/" + projectRoute
 	}
 	
-	// Ensure projectRoute ends without / (to avoid double slashes)
-	projectRoute = strings.TrimSuffix(projectRoute, "/")
+	// Handle root path: if projectRoute is "/", use empty string
+	if projectRoute == "/" {
+		projectRoute = ""
+	} else {
+		// Ensure projectRoute ends without / (to avoid double slashes)
+		projectRoute = strings.TrimSuffix(projectRoute, "/")
+	}
 	
 	// Construct path: projectRoute + originalPath
 	backendPath := projectRoute + r.URL.Path
@@ -156,7 +161,20 @@ func (h *ProxyHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	backendReq.Header.Set("X-Tenant-ID", tenantInfo.TenantID)
 	
 	// Set proper Host header for backend
-	backendReq.Host = backendURL.Host
+	// If backend domain was specified, preserve the original domain in Host header for proper routing
+	// This is important for nginx virtual hosts that route based on Host header
+	if tenantInfo.BackendDomain != nil && *tenantInfo.BackendDomain != "" {
+		// Use the original backend domain (e.g., admin.localhost) in Host header
+		// But connect to host.docker.internal:85 for the actual connection
+		originalDomain := *tenantInfo.BackendDomain
+		if tenantInfo.ProjectPort != nil {
+			backendReq.Host = originalDomain + ":" + strconv.Itoa(*tenantInfo.ProjectPort)
+		} else {
+			backendReq.Host = originalDomain
+		}
+	} else {
+		backendReq.Host = backendURL.Host
+	}
 
 	// Forward request
 	resp, err := h.client.Do(backendReq)
