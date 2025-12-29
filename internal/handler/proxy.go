@@ -65,16 +65,25 @@ func (h *ProxyHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build backend URL
-	backendURL, err := url.Parse(h.backendURL)
+	baseURL, err := url.Parse(h.backendURL)
 	if err != nil {
 		http.Error(w, "Invalid backend URL configuration", http.StatusInternalServerError)
 		return
 	}
 
+	// Determine scheme (default to http)
+	scheme := baseURL.Scheme
+	if scheme == "" {
+		scheme = "http"
+	}
+
+	var backendURL *url.URL
+
 	// Override domain if tenant has a specific backend domain
 	if tenantInfo.BackendDomain != nil && *tenantInfo.BackendDomain != "" {
 		// Use tenant-specific backend domain
 		hostname := *tenantInfo.BackendDomain
+		
 		// Convert localhost/127.0.0.1 to host.docker.internal when in Docker (for accessing host services)
 		// This allows containers to reach services on the Docker host
 		if hostname == "localhost" || hostname == "127.0.0.1" {
@@ -94,18 +103,31 @@ func (h *ProxyHandler) Handle(w http.ResponseWriter, r *http.Request) {
 			}
 			hostname = dockerHost
 		}
-		port := backendURL.Port()
+		
+		port := baseURL.Port()
 		if tenantInfo.ProjectPort != nil {
 			port = strconv.Itoa(*tenantInfo.ProjectPort)
 		}
+		
+		// Build new URL from scratch
+		backendURL = &url.URL{
+			Scheme: scheme,
+			Host:   hostname,
+		}
 		if port != "" {
 			backendURL.Host = hostname + ":" + port
-		} else {
-			backendURL.Host = hostname
 		}
 	} else if tenantInfo.ProjectPort != nil {
 		// Override port if tenant has a specific project port (but keep original domain)
-		backendURL.Host = backendURL.Hostname() + ":" + strconv.Itoa(*tenantInfo.ProjectPort)
+		backendURL = &url.URL{
+			Scheme: scheme,
+			Host:   baseURL.Hostname() + ":" + strconv.Itoa(*tenantInfo.ProjectPort),
+		}
+	} else {
+		backendURL = baseURL
+		if backendURL.Scheme == "" {
+			backendURL.Scheme = scheme
+		}
 	}
 
 	// Construct full backend path with project route
@@ -133,7 +155,13 @@ func (h *ProxyHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	if r.URL.RawQuery != "" {
 		backendPath += "?" + r.URL.RawQuery
 	}
+	
+	// Ensure path starts with / for proper URL resolution
+	if !strings.HasPrefix(backendPath, "/") {
+		backendPath = "/" + backendPath
+	}
 
+	// Build the full URL by combining base URL with path
 	backendReqURL := backendURL.ResolveReference(&url.URL{Path: backendPath})
 
 	// Create request to backend
@@ -167,8 +195,13 @@ func (h *ProxyHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		// Use the original backend domain (e.g., admin.localhost) in Host header
 		// But connect to host.docker.internal:85 for the actual connection
 		originalDomain := *tenantInfo.BackendDomain
+		// Determine port for Host header (use project port if set, otherwise from base URL)
+		port := baseURL.Port()
 		if tenantInfo.ProjectPort != nil {
-			backendReq.Host = originalDomain + ":" + strconv.Itoa(*tenantInfo.ProjectPort)
+			port = strconv.Itoa(*tenantInfo.ProjectPort)
+		}
+		if port != "" {
+			backendReq.Host = originalDomain + ":" + port
 		} else {
 			backendReq.Host = originalDomain
 		}
