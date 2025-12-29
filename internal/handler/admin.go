@@ -20,10 +20,11 @@ func NewAdminHandler(tm *database.TenantManager) *AdminHandler {
 
 func (h *AdminHandler) AddTenant(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Domain      string `json:"domain"`
-		TenantID    string `json:"tenant_id"`
-		ProjectRoute string `json:"project_route"` // Optional, defaults to /projects/backend
-		ProjectPort  *int  `json:"project_port,omitempty"` // Optional port for project
+		Domain        string  `json:"domain"`
+		TenantID      string  `json:"tenant_id"`
+		ProjectRoute  string  `json:"project_route"`           // Optional, defaults to /projects/backend
+		ProjectPort   *int    `json:"project_port,omitempty"`  // Optional port for project
+		BackendDomain *string `json:"backend_domain,omitempty"` // Optional backend domain (e.g., localhost, admin.local)
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -36,7 +37,7 @@ func (h *AdminHandler) AddTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.tenantManager.AddTenant(req.Domain, req.TenantID, req.ProjectRoute, req.ProjectPort); err != nil {
+	if err := h.tenantManager.AddTenant(req.Domain, req.TenantID, req.ProjectRoute, req.ProjectPort, req.BackendDomain); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -49,6 +50,9 @@ func (h *AdminHandler) AddTenant(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.ProjectPort != nil {
 		response["project_port"] = *req.ProjectPort
+	}
+	if req.BackendDomain != nil && *req.BackendDomain != "" {
+		response["backend_domain"] = *req.BackendDomain
 	}
 
 	w.Header().Set("Content-Type", "application/json")

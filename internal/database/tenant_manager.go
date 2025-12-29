@@ -11,9 +11,10 @@ import (
 )
 
 type TenantInfo struct {
-	TenantID    string
+	TenantID     string
 	ProjectRoute string
-	ProjectPort  *int // Optional port, nil means use default from config
+	ProjectPort  *int    // Optional port, nil means use default from config
+	BackendDomain *string // Optional backend domain (e.g., localhost, admin.local), nil means use default from BACKEND_URL
 }
 
 type TenantManager struct {
@@ -51,6 +52,7 @@ func (tm *TenantManager) initDB() error {
 		tenant_id TEXT NOT NULL,
 		project_route TEXT NOT NULL DEFAULT '/projects/backend',
 		project_port INTEGER,
+		backend_domain TEXT,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 
@@ -64,6 +66,9 @@ func (tm *TenantManager) initDB() error {
 	
 	// Migration: Add project_port column if it doesn't exist (for existing databases)
 	_, _ = tm.db.Exec("ALTER TABLE tenants ADD COLUMN project_port INTEGER")
+	
+	// Migration: Add backend_domain column if it doesn't exist (for existing databases)
+	_, _ = tm.db.Exec("ALTER TABLE tenants ADD COLUMN backend_domain TEXT")
 	
 	return err
 }
@@ -119,17 +124,18 @@ func (tm *TenantManager) GetTenantID(host string) (string, error) {
 
 func (tm *TenantManager) resolveTenantInfo(host string) (*TenantInfo, error) {
 	// Direct match
-	var tenantID, projectRoute string
+	var tenantID, projectRoute, backendDomain sql.NullString
 	var projectPort sql.NullInt64
 	err := tm.db.QueryRow(
-		"SELECT tenant_id, project_route, project_port FROM tenants WHERE domain = ?",
+		"SELECT tenant_id, project_route, project_port, backend_domain FROM tenants WHERE domain = ?",
 		host,
-	).Scan(&tenantID, &projectRoute, &projectPort)
+	).Scan(&tenantID, &projectRoute, &projectPort, &backendDomain)
 
 	if err == nil {
 		// Set default if empty
-		if projectRoute == "" {
-			projectRoute = "/projects/backend"
+		route := projectRoute.String
+		if route == "" {
+			route = "/projects/backend"
 		}
 		
 		var port *int
@@ -138,10 +144,17 @@ func (tm *TenantManager) resolveTenantInfo(host string) (*TenantInfo, error) {
 			port = &p
 		}
 		
+		var backendDom *string
+		if backendDomain.Valid && backendDomain.String != "" {
+			dom := backendDomain.String
+			backendDom = &dom
+		}
+		
 		return &TenantInfo{
-			TenantID:    tenantID,
-			ProjectRoute: projectRoute,
+			TenantID:     tenantID.String,
+			ProjectRoute: route,
 			ProjectPort:  port,
+			BackendDomain: backendDom,
 		}, nil
 	}
 
@@ -150,7 +163,7 @@ func (tm *TenantManager) resolveTenantInfo(host string) (*TenantInfo, error) {
 	}
 
 	// Wildcard match (e.g., *.example.com)
-	rows, err := tm.db.Query("SELECT domain, tenant_id, project_route, project_port FROM tenants WHERE domain LIKE '%*%'")
+	rows, err := tm.db.Query("SELECT domain, tenant_id, project_route, project_port, backend_domain FROM tenants WHERE domain LIKE '%*%'")
 	if err != nil {
 		return nil, fmt.Errorf("wildcard query error: %w", err)
 	}
@@ -158,8 +171,9 @@ func (tm *TenantManager) resolveTenantInfo(host string) (*TenantInfo, error) {
 
 	for rows.Next() {
 		var domain, tid, route string
+		var backendDom sql.NullString
 		var projectPort sql.NullInt64
-		if err := rows.Scan(&domain, &tid, &route, &projectPort); err != nil {
+		if err := rows.Scan(&domain, &tid, &route, &projectPort, &backendDom); err != nil {
 			continue
 		}
 
@@ -175,10 +189,17 @@ func (tm *TenantManager) resolveTenantInfo(host string) (*TenantInfo, error) {
 				port = &p
 			}
 			
+			var backendDomain *string
+			if backendDom.Valid && backendDom.String != "" {
+				dom := backendDom.String
+				backendDomain = &dom
+			}
+			
 			return &TenantInfo{
-				TenantID:    tid,
+				TenantID:     tid,
 				ProjectRoute: route,
 				ProjectPort:  port,
+				BackendDomain: backendDomain,
 			}, nil
 		}
 	}
@@ -213,7 +234,7 @@ func (tm *TenantManager) matchWildcard(host, pattern string) bool {
 	return strings.HasPrefix(host, parts[0]) && strings.HasSuffix(host, parts[1])
 }
 
-func (tm *TenantManager) AddTenant(domain, tenantID, projectRoute string, projectPort *int) error {
+func (tm *TenantManager) AddTenant(domain, tenantID, projectRoute string, projectPort *int, backendDomain *string) error {
 	domain = strings.ToLower(domain)
 	
 	// Set default if empty
@@ -228,9 +249,16 @@ func (tm *TenantManager) AddTenant(domain, tenantID, projectRoute string, projec
 		portValue = nil
 	}
 	
+	var backendDomainValue interface{}
+	if backendDomain != nil && *backendDomain != "" {
+		backendDomainValue = *backendDomain
+	} else {
+		backendDomainValue = nil
+	}
+	
 	_, err := tm.db.Exec(
-		"INSERT OR REPLACE INTO tenants (domain, tenant_id, project_route, project_port) VALUES (?, ?, ?, ?)",
-		domain, tenantID, projectRoute, portValue,
+		"INSERT OR REPLACE INTO tenants (domain, tenant_id, project_route, project_port, backend_domain) VALUES (?, ?, ?, ?, ?)",
+		domain, tenantID, projectRoute, portValue, backendDomainValue,
 	)
 	
 	if err != nil {
@@ -267,7 +295,7 @@ func (tm *TenantManager) DeleteTenant(domain string) error {
 }
 
 func (tm *TenantManager) ListTenants() ([]map[string]interface{}, error) {
-	rows, err := tm.db.Query("SELECT domain, tenant_id, project_route, project_port, created_at FROM tenants ORDER BY domain")
+	rows, err := tm.db.Query("SELECT domain, tenant_id, project_route, project_port, backend_domain, created_at FROM tenants ORDER BY domain")
 	if err != nil {
 		return nil, fmt.Errorf("failed to list tenants: %w", err)
 	}
@@ -276,10 +304,11 @@ func (tm *TenantManager) ListTenants() ([]map[string]interface{}, error) {
 	var tenants []map[string]interface{}
 	for rows.Next() {
 		var domain, tenantID, projectRoute string
+		var backendDomain sql.NullString
 		var projectPort sql.NullInt64
 		var createdAt string
 		
-		if err := rows.Scan(&domain, &tenantID, &projectRoute, &projectPort, &createdAt); err != nil {
+		if err := rows.Scan(&domain, &tenantID, &projectRoute, &projectPort, &backendDomain, &createdAt); err != nil {
 			continue
 		}
 
@@ -296,6 +325,10 @@ func (tm *TenantManager) ListTenants() ([]map[string]interface{}, error) {
 		
 		if projectPort.Valid {
 			tenant["project_port"] = projectPort.Int64
+		}
+		
+		if backendDomain.Valid && backendDomain.String != "" {
+			tenant["backend_domain"] = backendDomain.String
 		}
 
 		tenants = append(tenants, tenant)

@@ -18,8 +18,9 @@ type TenantConfig struct {
 }
 
 type TenantInfo struct {
-	TenantID    string
+	TenantID     string
 	ProjectRoute string
-	ProjectPort  *int // Optional port, nil means use default from config
+	ProjectPort  *int    // Optional port, nil means use default from config
+	BackendDomain *string // Optional backend domain (e.g., localhost, admin.local), nil means use default from BACKEND_URL
 }
 

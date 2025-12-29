@@ -70,9 +70,21 @@ func (h *ProxyHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Override port if tenant has a specific project port
-	if tenantInfo.ProjectPort != nil {
-		// Reconstruct URL with tenant-specific port
+	// Override domain if tenant has a specific backend domain
+	if tenantInfo.BackendDomain != nil && *tenantInfo.BackendDomain != "" {
+		// Use tenant-specific backend domain
+		hostname := *tenantInfo.BackendDomain
+		port := backendURL.Port()
+		if tenantInfo.ProjectPort != nil {
+			port = strconv.Itoa(*tenantInfo.ProjectPort)
+		}
+		if port != "" {
+			backendURL.Host = hostname + ":" + port
+		} else {
+			backendURL.Host = hostname
+		}
+	} else if tenantInfo.ProjectPort != nil {
+		// Override port if tenant has a specific project port (but keep original domain)
 		backendURL.Host = backendURL.Hostname() + ":" + strconv.Itoa(*tenantInfo.ProjectPort)
 	}
 

@@ -233,8 +233,14 @@ func (h *AdminUIHandler) ServeAdminPanel(w http.ResponseWriter, r *http.Request)
                     <input type="text" id="tenant_id" name="tenant_id" placeholder="مثال: tenant-123" required>
                 </div>
                 <div class="form-group">
+                    <label for="backend_domain">دامنه داخلی (Backend Domain):</label>
+                    <input type="text" id="backend_domain" name="backend_domain" placeholder="مثال: localhost یا admin.local (اختیاری)">
+                    <small style="display: block; margin-top: 5px; color: #666; font-size: 0.9rem;">دامنه داخلی که پروژه روی آن اجرا می‌شود. اگر خالی بماند، از دامنه در BACKEND_URL استفاده می‌شود</small>
+                </div>
+                <div class="form-group">
                     <label for="project_route">مسیر پروژه (Project Route):</label>
                     <input type="text" id="project_route" name="project_route" placeholder="مثال: /projects/backend (اختیاری)" value="/projects/backend">
+                    <small style="display: block; margin-top: 5px; color: #666; font-size: 0.9rem;">مسیر پروژه در reverse proxy (مثل /projects/backend، /projects/frontend). این مسیر به URL بک‌اند اضافه می‌شود تا درخواست به سرویس مناسب forward شود.</small>
                 </div>
                 <div class="form-group">
                     <label for="project_port">پورت پروژه (Project Port):</label>
@@ -288,13 +294,15 @@ func (h *AdminUIHandler) ServeAdminPanel(w http.ResponseWriter, r *http.Request)
                     return;
                 }
                 
-                let tableHTML = '<table class="tenants-table"><thead><tr><th>دامنه</th><th>Tenant ID</th><th>مسیر پروژه</th><th>پورت پروژه</th><th>تاریخ ایجاد</th><th>عملیات</th></tr></thead><tbody>';
+                let tableHTML = '<table class="tenants-table"><thead><tr><th>دامنه</th><th>Tenant ID</th><th>دامنه داخلی</th><th>مسیر پروژه</th><th>پورت پروژه</th><th>تاریخ ایجاد</th><th>عملیات</th></tr></thead><tbody>';
                 
                 tenants.forEach(tenant => {
                     const projectPort = tenant.project_port ? escapeHtml(tenant.project_port.toString()) : '<span style="color: #999;">-</span>';
+                    const backendDomain = tenant.backend_domain ? escapeHtml(tenant.backend_domain) : '<span style="color: #999;">-</span>';
                     tableHTML += '<tr>' +
                         '<td><strong>' + escapeHtml(tenant.domain) + '</strong></td>' +
                         '<td><code>' + escapeHtml(tenant.tenant_id) + '</code></td>' +
+                        '<td>' + backendDomain + '</td>' +
                         '<td><code>' + escapeHtml(tenant.project_route || '/projects/backend') + '</code></td>' +
                         '<td>' + projectPort + '</td>' +
                         '<td>' + escapeHtml(tenant.created_at || '-') + '</td>' +
@@ -316,11 +324,17 @@ func (h *AdminUIHandler) ServeAdminPanel(w http.ResponseWriter, r *http.Request)
             
             const submitBtn = document.getElementById('submitBtn');
             const projectPortValue = document.getElementById('project_port').value.trim();
+            const backendDomainValue = document.getElementById('backend_domain').value.trim();
             const formData = {
                 domain: document.getElementById('domain').value.trim(),
                 tenant_id: document.getElementById('tenant_id').value.trim(),
                 project_route: document.getElementById('project_route').value.trim() || '/projects/backend'
             };
+            
+            // اضافه کردن backend_domain فقط اگر مقدار داشته باشد
+            if (backendDomainValue) {
+                formData.backend_domain = backendDomainValue;
+            }
             
             // اضافه کردن project_port فقط اگر مقدار داشته باشد
             if (projectPortValue) {
@@ -360,6 +374,7 @@ func (h *AdminUIHandler) ServeAdminPanel(w http.ResponseWriter, r *http.Request)
                 document.getElementById('tenantForm').reset();
                 document.getElementById('project_route').value = '/projects/backend';
                 document.getElementById('project_port').value = '';
+                document.getElementById('backend_domain').value = '';
                 await loadTenants();
             } catch (error) {
                 showAlert('خطا: ' + error.message, 'error');
