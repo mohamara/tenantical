@@ -280,6 +280,8 @@ services:
       - ./data:/data
     ports:
       - "127.0.0.1:8080:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - tenantical-network
     healthcheck:
@@ -358,6 +360,8 @@ services:
       - ADMIN_DOMAIN=${ADMIN_DOMAIN}
     volumes:
       - ./data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     labels:
       # Enable Traefik
       - "traefik.enable=true"

@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -74,9 +75,24 @@ func (h *ProxyHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	if tenantInfo.BackendDomain != nil && *tenantInfo.BackendDomain != "" {
 		// Use tenant-specific backend domain
 		hostname := *tenantInfo.BackendDomain
-		// Convert localhost domains to 127.0.0.1 to avoid IPv6 resolution issues
-		if hostname == "localhost" || strings.HasSuffix(hostname, ".localhost") {
-			hostname = "127.0.0.1"
+		// Convert localhost/127.0.0.1 to host.docker.internal when in Docker (for accessing host services)
+		// This allows containers to reach services on the Docker host
+		if hostname == "localhost" || hostname == "127.0.0.1" {
+			// Check if we should use host.docker.internal (default behavior in Docker)
+			// User can override by setting DOCKER_HOST_ALIAS env var (e.g., to use container name)
+			dockerHost := os.Getenv("DOCKER_HOST_ALIAS")
+			if dockerHost == "" {
+				dockerHost = "host.docker.internal" // Default for Docker Desktop and newer Docker
+			}
+			hostname = dockerHost
+		} else if strings.HasSuffix(hostname, ".localhost") {
+			// For .localhost domains, convert to host.docker.internal (or custom alias)
+			// This allows admin.localhost -> host.docker.internal
+			dockerHost := os.Getenv("DOCKER_HOST_ALIAS")
+			if dockerHost == "" {
+				dockerHost = "host.docker.internal"
+			}
+			hostname = dockerHost
 		}
 		port := backendURL.Port()
 		if tenantInfo.ProjectPort != nil {
